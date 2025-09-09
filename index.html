@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>#freeholyC Chat — Single File</title>
+<title>#freeholyC Chat — EASY Uploads (Fixed)</title>
 <style>
   :root{
     --panel-bg: rgba(0,0,0,0.6);
     --accent: #7cffb2;
     --muted: #bdbdbd;
+    --error: #ff7c7c;
   }
   html,body{height:100%;margin:0;background:linear-gradient(180deg,#060609,#0b1220);color:white;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
   /* Ads */
@@ -26,13 +27,15 @@
   input[type=text], input[type=file] { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.04); padding:8px; color:white; border-radius:6px; }
   input[name=name]{width:160px}
   input[name=message]{flex:1; min-width:120px}
-  button { background:linear-gradient(90deg,#1fd2a6,#3aa5ff); border:0; padding:8px 12px; border-radius:6px; cursor:pointer; color:#022; font-weight:700; }
+  button { background:linear-gradient(90deg,#1fd2a6,#3aa5ff); border:0; padding:8px 12px; border-radius:6px; cursor:pointer; color:#022; font-weight:700; transition: filter 0.2s; }
+  button:disabled { background: #555; cursor: not-allowed; filter: grayscale(80%); }
   .msg { margin-bottom:12px; }
   .meta{ font-size:0.78rem; color:var(--muted); margin-bottom:4px; }
   .text{ white-space:pre-wrap; word-break:break-word; font-size:0.98rem; color:#f7f7f7 }
   img.msg-media, video.msg-media { max-width:420px; max-height:280px; display:block; margin-top:8px; border-radius:6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
   /* many flying #freeholyC */
   .freeholy-c { position:absolute; font-weight:800; pointer-events:none; user-select:none; text-shadow:0 2px 6px rgba(0,0,0,0.6); }
+  .upload-status { font-size: 0.8rem; color: var(--accent); margin-left: 10px; }
   /* small screens adjustments */
   @media (max-width:900px){
     .ad{display:none}
@@ -42,7 +45,7 @@
 </head>
 <body>
 
-<!-- Ad slots (replace the src with your Imgur/hosted ad URLs) -->
+<!-- Ad slots -->
 <a class="ad left" href="#" target="_blank" id="leftAd"><img src="https://i.imgur.com/aC2gfh8.jpeg" alt="left ad"></a>
 <a class="ad right" href="#" target="_blank" id="rightAd"><img src="https://i.imgur.com/aC2gfh8.jpeg" alt="right ad"></a>
 
@@ -50,7 +53,7 @@
 <div class="chat-wrap">
   <div class="header">
     <h1>#freeholyC chat</h1>
-    <div class="sub">Realtime sync • Media up to 100MB • No backend required</div>
+    <div class="sub">Realtime sync • Media up to 100MB • No setup required</div>
   </div>
 
   <div class="messages" id="messages" aria-live="polite"></div>
@@ -58,11 +61,9 @@
   <div class="controls">
     <input type="text" name="name" id="nameInput" placeholder="username">
     <input type="text" name="message" id="textInput" placeholder="Type a message and press Enter">
-    <input type="file" id="fileInput" accept="image/*,video/*">
+    <input type="file" id="fileInput" accept="image/*,video/*" title="Upload images or videos (deleted after 14 days)">
     <button id="sendBtn">Send</button>
-    <label style="color:var(--muted);font-size:0.8rem;margin-left:6px;">
-      <input type="checkbox" id="tryImgur" /> upload to Imgur (set Client ID below)
-    </label>
+    <div id="uploadStatus" class="upload-status"></div>
   </div>
 </div>
 
@@ -71,23 +72,21 @@
 
 <script type="module">
 /*
-  Single-file realtime chat using Gun.js
-  - Syncs via public peer (can be changed below)
-  - Optionally uploads media to Imgur if you set IMGUR_CLIENT_ID
-  - Falls back to embedding base64 data URLs if Imgur not enabled
-  - Prevents duplicates & renders history (best-effort)
+  Single-file realtime chat using Gun.js.
+  File uploads are handled by transfer.sh for free, zero-config hosting.
+  NOTE: Uploaded files are automatically deleted after 14 days.
 */
 
 /* ===== CONFIG ===== */
-// Public Gun peer (relay). Change if you run your own server.
-const GUN_PEERS = ['https://gun-manhattan.herokuapp.com/gun'];
+// Public Gun peers (relay).
+const GUN_PEERS = [
+  'https://gun.ecc.ac',
+  'https://gun-us.herokuapp.com/gun',
+  'https://gun-eu.herokuapp.com/gun'
+];
 
 // Room name (multiple rooms possible by changing)
 const ROOM = 'freeholyc-room-1';
-
-// OPTIONAL: If you want Imgur uploads (recommended to avoid huge base64 messages),
-// set your Imgur Client ID here. If empty, the code will embed base64 directly.
-const IMGUR_CLIENT_ID = ''; // <-- put your Imgur Client-ID string here if you have one
 
 // Maximum allowed file size (100 MB)
 const MAX_SIZE_BYTES = 100 * 1024 * 1024;
@@ -96,30 +95,24 @@ const MAX_SIZE_BYTES = 100 * 1024 * 1024;
 
 import Gun from 'https://cdn.jsdelivr.net/npm/gun/gun.mjs';
 
-type ChatMessage = {
-  id: string;
-  name: string;
-  text: string;      // either a text message or a URL / data:image...
-  ts: string;
-  media: boolean;
-  contentType?: string; // e.g. image/png or video/mp4
-};
+// Get all the HTML elements we need
+const messagesEl = document.getElementById('messages');
+const nameInput = document.getElementById('nameInput');
+const textInput = document.getElementById('textInput');
+const fileInput = document.getElementById('fileInput');
+const sendBtn = document.getElementById('sendBtn');
+const uploadStatusEl = document.getElementById('uploadStatus');
+const leftAd = document.getElementById('leftAd');
+const rightAd = document.getElementById('rightAd');
 
-const gun = Gun({
-  peers: GUN_PEERS
-});
+// Exit if essential elements are missing
+if (!messagesEl || !nameInput || !textInput || !fileInput || !sendBtn || !uploadStatusEl) {
+  throw new Error("A critical chat element is missing from the HTML.");
+}
+
+const gun = Gun({ peers: GUN_PEERS });
 const room = gun.get('rooms').get(ROOM);
 const messagesNode = room.get('messages');
-
-const messagesEl = document.getElementById('messages') as HTMLDivElement;
-const nameInput = document.getElementById('nameInput') as HTMLInputElement;
-const textInput = document.getElementById('textInput') as HTMLInputElement;
-const fileInput = document.getElementById('fileInput') as HTMLInputElement;
-const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
-const tryImgurEl = document.getElementById('tryImgur') as HTMLInputElement;
-
-const leftAd = document.getElementById('leftAd') as HTMLAnchorElement;
-const rightAd = document.getElementById('rightAd') as HTMLAnchorElement;
 
 // Pre-fill username from localStorage
 const savedName = localStorage.getItem('freeholyc_name');
@@ -128,20 +121,18 @@ if (savedName) nameInput.value = savedName;
 // Save name on change
 nameInput.addEventListener('change', () => localStorage.setItem('freeholyc_name', nameInput.value));
 
-// seen message IDs to avoid duplicates
-const seen = new Set<string>();
-
-// For ordering when loading history
-const initialBuffer: ChatMessage[] = [];
+const seen = new Set();
+const initialBuffer = [];
 let initialLoaded = false;
 
-// Helper: sanitize text via textContent
-function textNodeFromString(s: string){ const d = document.createElement('div'); d.textContent = s; return d; }
+function textNodeFromString(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d;
+}
 
-// Render a single message (idempotent if we check seen)
-function renderMessage(msg: ChatMessage){
-  if(!msg || !msg.id) return;
-  if(seen.has(msg.id)) return;
+function renderMessage(msg) {
+  if (!msg || !msg.id || seen.has(msg.id)) return;
   seen.add(msg.id);
 
   const el = document.createElement('div');
@@ -156,23 +147,21 @@ function renderMessage(msg: ChatMessage){
   const body = document.createElement('div');
   body.className = 'text';
 
-  if(msg.media && msg.contentType){
-    // media
-    if(msg.contentType.startsWith('image')){
+  if (msg.media && msg.contentType) {
+    if (msg.contentType.startsWith('image')) {
       const img = document.createElement('img');
       img.className = 'msg-media';
       img.src = msg.text;
       img.alt = '#freeholyC image';
       img.loading = 'lazy';
       body.appendChild(img);
-    } else if(msg.contentType.startsWith('video')){
+    } else if (msg.contentType.startsWith('video')) {
       const vid = document.createElement('video');
       vid.className = 'msg-media';
       vid.controls = true;
       vid.src = msg.text;
       body.appendChild(vid);
     } else {
-      // unknown media; show link
       const a = document.createElement('a');
       a.href = msg.text;
       a.textContent = 'Open media';
@@ -180,76 +169,44 @@ function renderMessage(msg: ChatMessage){
       body.appendChild(a);
     }
   } else {
-    // plain text
     body.appendChild(textNodeFromString(msg.text || ''));
   }
 
   el.appendChild(body);
   messagesEl.appendChild(el);
-  // keep scrolled to bottom for live chat
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-/* === Load initial history (best-effort) ===
-   We'll use map().once to gather existing messages, then render them sorted by timestamp.
-   After a short window we mark initialLoaded=true and rely on map().on to append live updates.
-*/
-messagesNode.map().once((raw: any) => {
-  if(!raw || !raw.id) return;
-  try{
-    // Gun stores as object; ensure correct shape
-    const msg: ChatMessage = {
-      id: raw.id,
-      name: raw.name || 'anon',
-      text: raw.text || '',
-      ts: raw.ts || new Date().toISOString(),
-      media: !!raw.media,
-      contentType: raw.contentType
-    };
+messagesNode.map().once((msg) => {
+  if (msg && msg.id) {
     initialBuffer.push(msg);
-  }catch(e){
-    // ignore parse errors
   }
 });
 
-// after 600ms, render buffer sorted
-setTimeout(()=>{
-  initialBuffer.sort((a,b)=> (new Date(a.ts).getTime()) - (new Date(b.ts).getTime()));
+setTimeout(() => {
+  initialBuffer.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
   initialBuffer.forEach(renderMessage);
   initialLoaded = true;
 }, 600);
 
-/* === Real-time listener ===
-   map().on will be called for all items (including initial); we filter using seen set.
-*/
-messagesNode.map().on((raw: any) => {
-  if(!raw || !raw.id) return;
-  const msg: ChatMessage = {
-    id: raw.id,
-    name: raw.name || 'anon',
-    text: raw.text || '',
-    ts: raw.ts || new Date().toISOString(),
-    media: !!raw.media,
-    contentType: raw.contentType
-  };
-  // If we haven't yet rendered initial history, buffer it too (some may arrive late)
-  if(!initialLoaded){
-    initialBuffer.push(msg);
+messagesNode.map().on((msg) => {
+  if (!msg || !msg.id) return;
+  if (!initialLoaded) {
+    if (!initialBuffer.some(item => item.id === msg.id)) {
+        initialBuffer.push(msg);
+    }
     return;
   }
-  // otherwise render live
   renderMessage(msg);
 });
 
-/* === Sending messages === */
-function sendText(){
+function sendText() {
   const text = textInput.value.trim();
-  if(!text) return;
+  if (!text) return;
   const name = nameInput.value.trim() || 'anon';
-  const msg: ChatMessage = {
+  const msg = {
     id: Gun.text.random(),
-    name,
-    text,
+    name, text,
     ts: new Date().toISOString(),
     media: false
   };
@@ -257,147 +214,124 @@ function sendText(){
   textInput.value = '';
 }
 
-async function uploadToImgur(file: File): Promise<string>{
-  // returns image URL (link) or throws
-  if(!IMGUR_CLIENT_ID) throw new Error('Imgur Client ID not configured on page');
-  const fd = new FormData();
-  fd.append('image', file);
-  // anonymous upload endpoint
-  const res = await fetch('https://api.imgur.com/3/image', {
-    method:'POST',
-    body: fd,
-    headers: {
-      Authorization: 'Client-ID ' + IMGUR_CLIENT_ID
-    }
-  });
-  const json = await res.json();
-  if(!json || !json.data || !json.data.link) throw new Error('Imgur upload failed');
-  return json.data.link;
+function setUploadStatus(text, isError = false) {
+    uploadStatusEl.textContent = text;
+    uploadStatusEl.style.color = isError ? 'var(--error)' : 'var(--accent)';
 }
 
-async function sendFile(file: File){
-  if(!file) return;
-  if(file.size > MAX_SIZE_BYTES) { alert('File too large — max 100 MB'); return; }
-  const name = nameInput.value.trim() || 'anon';
-  const useImgur = tryImgurEl.checked && !!IMGUR_CLIENT_ID;
-  try{
-    let urlOrData: string;
-    if(useImgur){
-      // upload to Imgur and get a public link
-      // NOTE: Imgur rejects some video formats; fallback to base64 on failure
-      urlOrData = await uploadToImgur(file);
-    } else {
-      // embed as data URL (may be huge)
-      urlOrData = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result as string);
-        r.onerror = rej;
-        r.readAsDataURL(file);
-      });
+function setControlsDisabled(disabled) {
+    sendBtn.disabled = disabled;
+    textInput.disabled = disabled;
+    fileInput.disabled = disabled;
+}
+
+async function uploadFile(file) {
+    const uploadUrl = `https://transfer.sh/${file.name}`;
+
+    const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
     }
-    const msg: ChatMessage = {
+
+    // The response body is the direct URL to the file
+    return await response.text();
+}
+
+async function sendFile(file) {
+  if (!file) return;
+  if (file.size > MAX_SIZE_BYTES) {
+    alert('File too large — max 100 MB');
+    return;
+  }
+
+  setControlsDisabled(true);
+  setUploadStatus('Uploading...');
+
+  try {
+    const fileUrl = await uploadFile(file);
+    const name = nameInput.value.trim() || 'anon';
+    const msg = {
       id: Gun.text.random(),
       name,
-      text: urlOrData,
+      text: fileUrl,
       ts: new Date().toISOString(),
       media: true,
       contentType: file.type
     };
     messagesNode.set(msg);
-  }catch(e){
-    console.error('file send error', e);
-    // try fallback to base64 if Imgur failed
-    if(tryImgurEl.checked && IMGUR_CLIENT_ID){
-      if(confirm('Imgur upload failed — fallback to embedding data directly? (may be large)')){
-        try{
-          const r = new FileReader();
-          r.onload = () => {
-            const dataUrl = r.result as string;
-            const msg: ChatMessage = {
-              id: Gun.text.random(),
-              name: nameInput.value || 'anon',
-              text: dataUrl,
-              ts: new Date().toISOString(),
-              media: true,
-              contentType: file.type
-            };
-            messagesNode.set(msg);
-          };
-          r.readAsDataURL(file);
-        }catch(err){
-          alert('Fallback failed.');
-        }
-      }
-    } else {
-      alert('Upload failed.');
-    }
+    setUploadStatus('Upload complete!', false);
+  } catch (e) {
+    console.error('File send error', e);
+    setUploadStatus(`Upload failed!`, true);
+    alert(`File upload failed. See console for details.`);
+  } finally {
+    setControlsDisabled(false);
+    setTimeout(() => setUploadStatus(''), 3000);
   }
 }
 
-/* UI event wiring */
 sendBtn.addEventListener('click', sendText);
-textInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') sendText(); });
+textInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendText();
+});
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
-  if(!file) return;
+  if (!file) return;
   sendFile(file);
-  // reset file input so same file can be reselected later
-  fileInput.value = '';
+  fileInput.value = ''; // Reset for re-uploading the same file
 });
 
-/* === Ad link placeholders (user can change) === */
-(function initAds(){
-  // default example images (replace URLs with your Imgur links)
-  const leftImg = leftAd.querySelector('img') as HTMLImageElement;
-  const rightImg = rightAd.querySelector('img') as HTMLImageElement;
-  // Replace these example links with your own Imgur links if required
-  if(leftImg && leftImg.src.includes('yourLeftAd.png')) leftImg.src = 'https://i.imgur.com/8JmG7kX.png';
-  if(rightImg && rightImg.src.includes('yourRightAd.png')) rightImg.src = 'https://i.imgur.com/0rV2e0V.png';
-  leftAd.href = leftImg.src;
-  rightAd.href = rightImg.src;
+(function initAds() {
+  if (!leftAd || !rightAd) return;
+  const leftImg = leftAd.querySelector('img');
+  const rightImg = rightAd.querySelector('img');
+
+  if (leftImg) leftAd.href = leftImg.src;
+  if (rightImg) rightAd.href = rightImg.src;
 })();
 
-/* === MANY flying #freeholyC instances === */
-(function spawnFreeHoly(){
-  const container = document.getElementById('freeholyContainer')!;
-  const COUNT = Math.min(Math.max(16, Math.floor(window.innerWidth * window.innerHeight / 80000)), 80); // scale with screen
-  const items: {
-    el: HTMLElement;
-    x:number; y:number; vx:number; vy:number; rot:number; vrot:number; size:number;
-  }[] = [];
-  for(let i=0;i<COUNT;i++){
+(function spawnFreeHoly() {
+  const container = document.getElementById('freeholyContainer');
+  if (!container) return;
+  const COUNT = Math.min(Math.max(16, Math.floor(window.innerWidth * window.innerHeight / 80000)), 80);
+  const items = [];
+
+  for (let i = 0; i < COUNT; i++) {
     const span = document.createElement('div');
     span.className = 'freeholy-c';
     span.textContent = '#freeholyC';
-    const size = 12 + Math.random()*40;
+    const size = 12 + Math.random() * 40;
     span.style.fontSize = size + 'px';
-    span.style.opacity = (0.35 + Math.random()*0.9).toString();
+    span.style.opacity = (0.35 + Math.random() * 0.9).toString();
     container.appendChild(span);
     const x = Math.random() * (window.innerWidth - 60);
     const y = Math.random() * (window.innerHeight - 60);
-    const vx = (Math.random()*3 + 0.8) * (Math.random()>0.5?1:-1);
-    const vy = (Math.random()*3 + 0.8) * (Math.random()>0.5?1:-1);
-    const rot = Math.random()*360;
-    const vrot = (Math.random()*2 + 0.2) * (Math.random()>0.5?1:-1);
-    items.push({el:span,x,y,vx,vy,rot,vrot,size});
+    const vx = (Math.random() * 3 + 0.8) * (Math.random() > 0.5 ? 1 : -1);
+    const vy = (Math.random() * 3 + 0.8) * (Math.random() > 0.5 ? 1 : -1);
+    const rot = Math.random() * 360;
+    const vrot = (Math.random() * 2 + 0.2) * (Math.random() > 0.5 ? 1 : -1);
+    items.push({ el: span, x, y, vx, vy, rot, vrot, size });
   }
 
-  function step(){
-    for(const it of items){
+  function step() {
+    for (const it of items) {
       it.x += it.vx;
       it.y += it.vy;
       it.rot += it.vrot;
       const w = it.el.offsetWidth;
       const h = it.el.offsetHeight;
-      if(it.x <= 0 || it.x + w >= window.innerWidth){
+      if (it.x <= 0 || it.x + w >= window.innerWidth) {
         it.vx *= -1;
         it.el.style.color = randomColor();
       }
-      if(it.y <= 0 || it.y + h >= window.innerHeight){
+      if (it.y <= 0 || it.y + h >= window.innerHeight) {
         it.vy *= -1;
         it.el.style.color = randomColor();
       }
-      // update transform
       it.el.style.left = Math.max(0, Math.min(window.innerWidth - w, it.x)) + 'px';
       it.el.style.top = Math.max(0, Math.min(window.innerHeight - h, it.y)) + 'px';
       it.el.style.transform = `rotate(${it.rot}deg)`;
@@ -406,24 +340,22 @@ fileInput.addEventListener('change', () => {
   }
   requestAnimationFrame(step);
 
-  function randomColor(){
-    const r = Math.floor(120 + Math.random()*135);
-    const g = Math.floor(80 + Math.random()*175);
-    const b = Math.floor(80 + Math.random()*175);
+  function randomColor() {
+    const r = Math.floor(120 + Math.random() * 135);
+    const g = Math.floor(80 + Math.random() * 175);
+    const b = Math.floor(80 + Math.random() * 175);
     return `rgb(${r},${g},${b})`;
   }
 
-  // reposition on resize (simple)
   window.addEventListener('resize', () => {
-    for(const it of items){
-      it.x = Math.random()*(window.innerWidth-80);
-      it.y = Math.random()*(window.innerHeight-80);
+    for (const it of items) {
+      it.x = Math.random() * (window.innerWidth - 80);
+      it.y = Math.random() * (window.innerHeight - 80);
     }
   });
 })();
 
-/* === small helpful note for devs === */
-console.log('#freeholyC chat ready — Gun peers:', GUN_PEERS, 'Imgur client-id configured:', !!IMGUR_CLIENT_ID);
+console.log('#freeholyC chat ready — Gun peers:', GUN_PEERS);
 
 </script>
 </body>
