@@ -3,13 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>#freeholyC Chat — FINAL WORKING VERSION</title>
+<title>#freeholyC Chat — SIMPLE & WORKING</title>
 <style>
   :root{
     --panel-bg: rgba(0,0,0,0.6);
     --accent: #7cffb2;
     --muted: #bdbdbd;
-    --error: #ff7c7c;
   }
   html,body{height:100%;margin:0;background:linear-gradient(180deg,#060609,#0b1220);color:white;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
   /* Ads */
@@ -24,18 +23,15 @@
   .header .sub{color:var(--muted);font-size:0.85rem}
   .messages { flex:1; overflow:auto; padding:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); border-radius:8px; }
   .controls { display:flex; gap:8px; align-items:center; padding:8px; background:var(--panel-bg); border-radius:8px; }
-  input[type=text], input[type=file] { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.04); padding:8px; color:white; border-radius:6px; }
+  input[type=text] { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.04); padding:8px; color:white; border-radius:6px; }
   input[name=name]{width:160px}
   input[name=message]{flex:1; min-width:120px}
-  button { background:linear-gradient(90deg,#1fd2a6,#3aa5ff); border:0; padding:8px 12px; border-radius:6px; cursor:pointer; color:#022; font-weight:700; transition: filter 0.2s; }
-  button:disabled { background: #555; cursor: not-allowed; filter: grayscale(80%); }
+  button { background:linear-gradient(90deg,#1fd2a6,#3aa5ff); border:0; padding:8px 12px; border-radius:6px; cursor:pointer; color:#022; font-weight:700; }
   .msg { margin-bottom:12px; }
   .meta{ font-size:0.78rem; color:var(--muted); margin-bottom:4px; }
   .text{ white-space:pre-wrap; word-break:break-word; font-size:0.98rem; color:#f7f7f7 }
-  img.msg-media, video.msg-media { max-width:420px; max-height:280px; display:block; margin-top:8px; border-radius:6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
   /* many flying #freeholyC */
   .freeholy-c { position:absolute; font-weight:800; pointer-events:none; user-select:none; text-shadow:0 2px 6px rgba(0,0,0,0.6); }
-  .upload-status { font-size: 0.8rem; color: var(--accent); margin-left: 10px; }
   /* small screens adjustments */
   @media (max-width:900px){
     .ad{display:none}
@@ -53,7 +49,7 @@
 <div class="chat-wrap">
   <div class="header">
     <h1>#freeholyC chat</h1>
-    <div class="sub">Realtime sync • Media up to 100MB • No setup required</div>
+    <div class="sub">Realtime P2P Chat • Text Only</div>
   </div>
 
   <div class="messages" id="messages" aria-live="polite"></div>
@@ -61,9 +57,7 @@
   <div class="controls">
     <input type="text" name="name" id="nameInput" placeholder="username">
     <input type="text" name="message" id="textInput" placeholder="Type a message and press Enter">
-    <input type="file" id="fileInput" accept="image/*,video/*" title="Upload images or videos (deleted after 14 days)">
     <button id="sendBtn">Send</button>
-    <div id="uploadStatus" class="upload-status"></div>
   </div>
 </div>
 
@@ -72,9 +66,8 @@
 
 <script type="module">
 /*
-  Single-file realtime chat using Gun.js.
-  File uploads are handled by transfer.sh for free, zero-config hosting.
-  NOTE: Uploaded files are automatically deleted after 14 days.
+  Single-file realtime text chat using Gun.js.
+  - No file uploads, no complications.
 */
 
 /* ===== CONFIG ===== */
@@ -88,9 +81,6 @@ const GUN_PEERS = [
 // Room name (multiple rooms possible by changing)
 const ROOM = 'freeholyc-room-1';
 
-// Maximum allowed file size (100 MB)
-const MAX_SIZE_BYTES = 100 * 1024 * 1024;
-
 /* ===== END CONFIG ===== */
 
 import Gun from 'https://cdn.jsdelivr.net/npm/gun/gun.mjs';
@@ -99,14 +89,12 @@ import Gun from 'https://cdn.jsdelivr.net/npm/gun/gun.mjs';
 const messagesEl = document.getElementById('messages');
 const nameInput = document.getElementById('nameInput');
 const textInput = document.getElementById('textInput');
-const fileInput = document.getElementById('fileInput');
 const sendBtn = document.getElementById('sendBtn');
-const uploadStatusEl = document.getElementById('uploadStatus');
 const leftAd = document.getElementById('leftAd');
 const rightAd = document.getElementById('rightAd');
 
 // Exit if essential elements are missing
-if (!messagesEl || !nameInput || !textInput || !fileInput || !sendBtn || !uploadStatusEl) {
+if (!messagesEl || !nameInput || !textInput || !sendBtn) {
   throw new Error("A critical chat element is missing from the HTML.");
 }
 
@@ -125,10 +113,11 @@ const seen = new Set();
 const initialBuffer = [];
 let initialLoaded = false;
 
+// Sanitize and create a text node
 function textNodeFromString(s) {
     const d = document.createElement('div');
     d.textContent = s;
-    return d;
+    return d.innerHTML;
 }
 
 function renderMessage(msg) {
@@ -146,154 +135,68 @@ function renderMessage(msg) {
 
   const body = document.createElement('div');
   body.className = 'text';
-
-  if (msg.media && msg.contentType) {
-    if (msg.contentType.startsWith('image')) {
-      const img = document.createElement('img');
-      img.className = 'msg-media';
-      img.src = msg.text;
-      img.alt = '#freeholyC image';
-      img.loading = 'lazy';
-      body.appendChild(img);
-    } else if (msg.contentType.startsWith('video')) {
-      const vid = document.createElement('video');
-      vid.className = 'msg-media';
-      vid.controls = true;
-      vid.src = msg.text;
-      body.appendChild(vid);
-    } else {
-      const a = document.createElement('a');
-      a.href = msg.text;
-      a.textContent = 'Open media';
-      a.target = '_blank';
-      body.appendChild(a);
-    }
-  } else {
-    body.appendChild(textNodeFromString(msg.text || ''));
-  }
-
+  body.innerHTML = textNodeFromString(msg.text || ''); // Set sanitized text
   el.appendChild(body);
+
   messagesEl.appendChild(el);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// Load initial history
 messagesNode.map().once((msg) => {
   if (msg && msg.id) {
     initialBuffer.push(msg);
   }
 });
 
+// After a delay, render history sorted by time
 setTimeout(() => {
   initialBuffer.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
   initialBuffer.forEach(renderMessage);
   initialLoaded = true;
-}, 600);
+}, 800);
 
+// Listen for new messages
 messagesNode.map().on((msg) => {
-  if (!msg || !msg.id) return;
-  if (!initialLoaded) {
-    if (!initialBuffer.some(item => item.id === msg.id)) {
-        initialBuffer.push(msg);
-    }
-    return;
-  }
+  if (!initialLoaded) return; // Don't re-render history
   renderMessage(msg);
 });
 
+// Send a text message
 function sendText() {
   const text = textInput.value.trim();
   if (!text) return;
+
   const name = nameInput.value.trim() || 'anon';
   const msg = {
     id: Gun.text.random(),
-    name, text,
+    name,
+    text,
     ts: new Date().toISOString(),
-    media: false
   };
   messagesNode.set(msg);
   textInput.value = '';
 }
 
-function setUploadStatus(text, isError = false) {
-    uploadStatusEl.textContent = text;
-    uploadStatusEl.style.color = isError ? 'var(--error)' : 'var(--accent)';
-}
-
-function setControlsDisabled(disabled) {
-    sendBtn.disabled = disabled;
-    textInput.disabled = disabled;
-    fileInput.disabled = disabled;
-}
-
-async function uploadFile(file) {
-    const uploadUrl = `https://transfer.sh/${file.name}`;
-
-    const response = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-    });
-
-    if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
-    }
-
-    // The response body is the direct URL to the file
-    return await response.text();
-}
-
-async function sendFile(file) {
-  if (!file) return;
-  if (file.size > MAX_SIZE_BYTES) {
-    alert('File too large — max 100 MB');
-    return;
-  }
-
-  setControlsDisabled(true);
-  setUploadStatus('Uploading...');
-
-  try {
-    const fileUrl = await uploadFile(file);
-    const name = nameInput.value.trim() || 'anon';
-    const msg = {
-      id: Gun.text.random(),
-      name,
-      text: fileUrl,
-      ts: new Date().toISOString(),
-      media: true,
-      contentType: file.type
-    };
-    messagesNode.set(msg);
-    setUploadStatus('Upload complete!', false);
-  } catch (e) {
-    console.error('File send error', e);
-    setUploadStatus(`Upload failed!`, true);
-    alert(`File upload failed. See console for details.`);
-  } finally {
-    setControlsDisabled(false);
-    setTimeout(() => setUploadStatus(''), 3000);
-  }
-}
-
+// Wire up UI events
 sendBtn.addEventListener('click', sendText);
 textInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendText();
-});
-fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0];
-  if (!file) return;
-  sendFile(file);
-  fileInput.value = ''; // Reset for re-uploading the same file
+  if (e.key === 'Enter') {
+    e.preventDefault(); // prevent form submission
+    sendText();
+  }
 });
 
+// Ad placeholders
 (function initAds() {
   if (!leftAd || !rightAd) return;
   const leftImg = leftAd.querySelector('img');
   const rightImg = rightAd.querySelector('img');
-
   if (leftImg) leftAd.href = leftImg.src;
   if (rightImg) rightAd.href = rightImg.src;
 })();
 
+// Flying text animation
 (function spawnFreeHoly() {
   const container = document.getElementById('freeholyContainer');
   if (!container) return;
@@ -355,7 +258,7 @@ fileInput.addEventListener('change', () => {
   });
 })();
 
-console.log('#freeholyC chat ready — Gun peers:', GUN_PEERS);
+console.log('#freeholyC chat ready — Text-only mode.');
 
 </script>
 </body>
