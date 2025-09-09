@@ -1,142 +1,429 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>#freeholyC Chat</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>#freeholyC Chat — Single File</title>
 <style>
-  body { margin:0; font-family:sans-serif; overflow:hidden; background:#111; color:#fff; }
-  #freeholyC { position:absolute; font-size:2rem; font-weight:bold; color:#0f0; pointer-events:none; }
-  .ad { position:absolute; top:50%; transform:translateY(-50%); width:120px; }
-  .ad.left { left:0; }
-  .ad.right { right:0; }
-  .chat-container { position:absolute; top:0; left:150px; right:150px; bottom:0; display:flex; flex-direction:column; background:rgba(0,0,0,0.6); }
-  .messages { flex:1; overflow-y:auto; padding:10px; }
-  .controls { display:flex; padding:5px; gap:5px; }
-  input[type="text"] { flex:1; }
-  .msg { margin-bottom:10px; }
-  .msg .meta { font-size:0.8em; color:#aaa; }
-  img, video { max-width:300px; max-height:200px; display:block; margin-top:5px; }
+  :root{
+    --panel-bg: rgba(0,0,0,0.6);
+    --accent: #7cffb2;
+    --muted: #bdbdbd;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#060609,#0b1220);color:white;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  /* Ads */
+  .ad { position: absolute; top: 50%; transform: translateY(-50%); width: 140px; height: auto; border-radius:8px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
+  .ad.left { left: 8px; }
+  .ad.right { right: 8px; }
+  .ad img { display:block; width:100%; height:auto; border-radius:8px; }
+  /* Chat panel */
+  .chat-wrap { position:absolute; inset: 10px 170px; display:flex; flex-direction:column; gap:8px; }
+  .header { display:flex; align-items:center; gap:12px; padding:10px; background:var(--panel-bg); border-radius:8px; box-shadow: 0 4px 16px rgba(0,0,0,.6); }
+  .header h1{margin:0;font-size:1.05rem; color:var(--accent); letter-spacing:0.08em;}
+  .header .sub{color:var(--muted);font-size:0.85rem}
+  .messages { flex:1; overflow:auto; padding:12px; background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); border-radius:8px; }
+  .controls { display:flex; gap:8px; align-items:center; padding:8px; background:var(--panel-bg); border-radius:8px; }
+  input[type=text], input[type=file] { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.04); padding:8px; color:white; border-radius:6px; }
+  input[name=name]{width:160px}
+  input[name=message]{flex:1; min-width:120px}
+  button { background:linear-gradient(90deg,#1fd2a6,#3aa5ff); border:0; padding:8px 12px; border-radius:6px; cursor:pointer; color:#022; font-weight:700; }
+  .msg { margin-bottom:12px; }
+  .meta{ font-size:0.78rem; color:var(--muted); margin-bottom:4px; }
+  .text{ white-space:pre-wrap; word-break:break-word; font-size:0.98rem; color:#f7f7f7 }
+  img.msg-media, video.msg-media { max-width:420px; max-height:280px; display:block; margin-top:8px; border-radius:6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); }
+  /* many flying #freeholyC */
+  .freeholy-c { position:absolute; font-weight:800; pointer-events:none; user-select:none; text-shadow:0 2px 6px rgba(0,0,0,0.6); }
+  /* small screens adjustments */
+  @media (max-width:900px){
+    .ad{display:none}
+    .chat-wrap{inset:8px 8px}
+  }
 </style>
 </head>
 <body>
 
-<!-- Ads -->
-<img class="ad left" src="https://i.imgur.com/aC2gfh8.jpeg" alt="left ad">
-<img class="ad right" src="https://i.imgur.com/aC2gfh8.jpeg" alt="right ad">
+<!-- Ad slots (replace the src with your Imgur/hosted ad URLs) -->
+<a class="ad left" href="#" target="_blank" id="leftAd"><img src="https://i.imgur.com/aC2gfh8.jpeg" alt="left ad"></a>
+<a class="ad right" href="#" target="_blank" id="rightAd"><img src="https://i.imgur.com/aC2gfh8.jpeg" alt="right ad"></a>
 
-<!-- flying #freeholyC -->
-<div id="freeholyC">#freeholyC</div>
+<!-- Chat area -->
+<div class="chat-wrap">
+  <div class="header">
+    <h1>#freeholyC chat</h1>
+    <div class="sub">Realtime sync • Media up to 100MB • No backend required</div>
+  </div>
 
-<!-- Chat -->
-<div class="chat-container">
-  <div class="messages" id="messages"></div>
+  <div class="messages" id="messages" aria-live="polite"></div>
+
   <div class="controls">
-    <input id="nameInput" type="text" placeholder="Your name">
-    <input id="textInput" type="text" placeholder="Type a message">
-    <input id="fileInput" type="file" accept="image/*,video/*">
+    <input type="text" name="name" id="nameInput" placeholder="username">
+    <input type="text" name="message" id="textInput" placeholder="Type a message and press Enter">
+    <input type="file" id="fileInput" accept="image/*,video/*">
     <button id="sendBtn">Send</button>
+    <label style="color:var(--muted);font-size:0.8rem;margin-left:6px;">
+      <input type="checkbox" id="tryImgur" /> upload to Imgur (set Client ID below)
+    </label>
   </div>
 </div>
 
+<!-- freeholyC container (we'll create many) -->
+<div id="freeholyContainer" aria-hidden="true"></div>
+
 <script type="module">
+/*
+  Single-file realtime chat using Gun.js
+  - Syncs via public peer (can be changed below)
+  - Optionally uploads media to Imgur if you set IMGUR_CLIENT_ID
+  - Falls back to embedding base64 data URLs if Imgur not enabled
+  - Prevents duplicates & renders history (best-effort)
+*/
+
+/* ===== CONFIG ===== */
+// Public Gun peer (relay). Change if you run your own server.
+const GUN_PEERS = ['https://gun-manhattan.herokuapp.com/gun'];
+
+// Room name (multiple rooms possible by changing)
+const ROOM = 'freeholyc-room-1';
+
+// OPTIONAL: If you want Imgur uploads (recommended to avoid huge base64 messages),
+// set your Imgur Client ID here. If empty, the code will embed base64 directly.
+const IMGUR_CLIENT_ID = ''; // <-- put your Imgur Client-ID string here if you have one
+
+// Maximum allowed file size (100 MB)
+const MAX_SIZE_BYTES = 100 * 1024 * 1024;
+
+/* ===== END CONFIG ===== */
+
 import Gun from 'https://cdn.jsdelivr.net/npm/gun/gun.mjs';
 
-interface ChatMessage {
+type ChatMessage = {
   id: string;
   name: string;
-  text: string;
+  text: string;      // either a text message or a URL / data:image...
   ts: string;
   media: boolean;
-  contentType?: string;
-}
+  contentType?: string; // e.g. image/png or video/mp4
+};
 
-const gun = Gun();
-const messages = gun.get('messages');
+const gun = Gun({
+  peers: GUN_PEERS
+});
+const room = gun.get('rooms').get(ROOM);
+const messagesNode = room.get('messages');
 
 const messagesEl = document.getElementById('messages') as HTMLDivElement;
-const textInput = document.getElementById('textInput') as HTMLInputElement;
 const nameInput = document.getElementById('nameInput') as HTMLInputElement;
+const textInput = document.getElementById('textInput') as HTMLInputElement;
 const fileInput = document.getElementById('fileInput') as HTMLInputElement;
 const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
+const tryImgurEl = document.getElementById('tryImgur') as HTMLInputElement;
 
-function appendMessageToDOM(msg: ChatMessage) {
+const leftAd = document.getElementById('leftAd') as HTMLAnchorElement;
+const rightAd = document.getElementById('rightAd') as HTMLAnchorElement;
+
+// Pre-fill username from localStorage
+const savedName = localStorage.getItem('freeholyc_name');
+if (savedName) nameInput.value = savedName;
+
+// Save name on change
+nameInput.addEventListener('change', () => localStorage.setItem('freeholyc_name', nameInput.value));
+
+// seen message IDs to avoid duplicates
+const seen = new Set<string>();
+
+// For ordering when loading history
+const initialBuffer: ChatMessage[] = [];
+let initialLoaded = false;
+
+// Helper: sanitize text via textContent
+function textNodeFromString(s: string){ const d = document.createElement('div'); d.textContent = s; return d; }
+
+// Render a single message (idempotent if we check seen)
+function renderMessage(msg: ChatMessage){
+  if(!msg || !msg.id) return;
+  if(seen.has(msg.id)) return;
+  seen.add(msg.id);
+
   const el = document.createElement('div');
   el.className = 'msg';
+
   const meta = document.createElement('div');
   meta.className = 'meta';
-  meta.textContent = `${msg.name} • ${new Date(msg.ts).toLocaleTimeString()}`;
+  const time = new Date(msg.ts || Date.now()).toLocaleString();
+  meta.textContent = `${msg.name || 'anon'} • ${time}`;
+  el.appendChild(meta);
+
   const body = document.createElement('div');
+  body.className = 'text';
+
   if(msg.media && msg.contentType){
+    // media
     if(msg.contentType.startsWith('image')){
-      const img = document.createElement('img'); img.src = msg.text; body.appendChild(img);
+      const img = document.createElement('img');
+      img.className = 'msg-media';
+      img.src = msg.text;
+      img.alt = '#freeholyC image';
+      img.loading = 'lazy';
+      body.appendChild(img);
     } else if(msg.contentType.startsWith('video')){
-      const video = document.createElement('video'); video.src = msg.text; video.controls = true; body.appendChild(video);
+      const vid = document.createElement('video');
+      vid.className = 'msg-media';
+      vid.controls = true;
+      vid.src = msg.text;
+      body.appendChild(vid);
+    } else {
+      // unknown media; show link
+      const a = document.createElement('a');
+      a.href = msg.text;
+      a.textContent = 'Open media';
+      a.target = '_blank';
+      body.appendChild(a);
     }
-  } else { body.textContent = msg.text; }
-  el.appendChild(meta); el.appendChild(body);
+  } else {
+    // plain text
+    body.appendChild(textNodeFromString(msg.text || ''));
+  }
+
+  el.appendChild(body);
   messagesEl.appendChild(el);
+  // keep scrolled to bottom for live chat
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// Gun.js listener
-messages.map().on((msg: ChatMessage) => { if(msg) appendMessageToDOM(msg); });
-
-// Send text message
-function sendMessageHandler() {
-  const text = textInput.value.trim();
-  if(!text) return;
-  const msg: ChatMessage = {
-    id: Gun.text.random(),
-    name: nameInput.value || 'anon',
-    text,
-    ts: new Date().toISOString(),
-    media:false
-  };
-  messages.set(msg);
-  textInput.value='';
-}
-
-// Send media
-fileInput.addEventListener('change', ()=>{
-  const file = fileInput.files?.[0];
-  if(!file) return;
-  if(file.size>1024*1024*100){ alert("Max 100MB!"); return; }
-  const reader = new FileReader();
-  reader.onload = e=>{
-    const base64 = e.target?.result as string;
+/* === Load initial history (best-effort) ===
+   We'll use map().once to gather existing messages, then render them sorted by timestamp.
+   After a short window we mark initialLoaded=true and rely on map().on to append live updates.
+*/
+messagesNode.map().once((raw: any) => {
+  if(!raw || !raw.id) return;
+  try{
+    // Gun stores as object; ensure correct shape
     const msg: ChatMessage = {
-      id: Gun.text.random(),
-      name: nameInput.value||'anon',
-      text: base64,
-      ts:new Date().toISOString(),
-      media:true,
-      contentType:file.type
+      id: raw.id,
+      name: raw.name || 'anon',
+      text: raw.text || '',
+      ts: raw.ts || new Date().toISOString(),
+      media: !!raw.media,
+      contentType: raw.contentType
     };
-    messages.set(msg);
-  };
-  reader.readAsDataURL(file);
+    initialBuffer.push(msg);
+  }catch(e){
+    // ignore parse errors
+  }
 });
 
-sendBtn.addEventListener('click', sendMessageHandler);
-textInput.addEventListener('keydown', e=>{if(e.key==='Enter') sendMessageHandler();});
+// after 600ms, render buffer sorted
+setTimeout(()=>{
+  initialBuffer.sort((a,b)=> (new Date(a.ts).getTime()) - (new Date(b.ts).getTime()));
+  initialBuffer.forEach(renderMessage);
+  initialLoaded = true;
+}, 600);
 
-// Flying #freeholyC like DVD logo
-const freeholyC = document.getElementById('freeholyC')!;
-let x = Math.random()*window.innerWidth/2, y = Math.random()*window.innerHeight/2;
-let vx = 2 + Math.random()*3, vy = 2 + Math.random()*3;
+/* === Real-time listener ===
+   map().on will be called for all items (including initial); we filter using seen set.
+*/
+messagesNode.map().on((raw: any) => {
+  if(!raw || !raw.id) return;
+  const msg: ChatMessage = {
+    id: raw.id,
+    name: raw.name || 'anon',
+    text: raw.text || '',
+    ts: raw.ts || new Date().toISOString(),
+    media: !!raw.media,
+    contentType: raw.contentType
+  };
+  // If we haven't yet rendered initial history, buffer it too (some may arrive late)
+  if(!initialLoaded){
+    initialBuffer.push(msg);
+    return;
+  }
+  // otherwise render live
+  renderMessage(msg);
+});
 
-function animate() {
-  const rect = freeholyC.getBoundingClientRect();
-  x += vx; y += vy;
-  if(x<0 || x+rect.width>window.innerWidth){ vx*=-1; freeholyC.style.color=`#${Math.floor(Math.random()*0xFFFFFF).toString(16)}`; }
-  if(y<0 || y+rect.height>window.innerHeight){ vy*=-1; freeholyC.style.color=`#${Math.floor(Math.random()*0xFFFFFF).toString(16)}`; }
-  freeholyC.style.left=x+'px';
-  freeholyC.style.top=y+'px';
-  freeholyC.style.transform=`rotate(${Date.now()%360}deg)`; // spinning
-  requestAnimationFrame(animate);
+/* === Sending messages === */
+function sendText(){
+  const text = textInput.value.trim();
+  if(!text) return;
+  const name = nameInput.value.trim() || 'anon';
+  const msg: ChatMessage = {
+    id: Gun.text.random(),
+    name,
+    text,
+    ts: new Date().toISOString(),
+    media: false
+  };
+  messagesNode.set(msg);
+  textInput.value = '';
 }
-animate();
+
+async function uploadToImgur(file: File): Promise<string>{
+  // returns image URL (link) or throws
+  if(!IMGUR_CLIENT_ID) throw new Error('Imgur Client ID not configured on page');
+  const fd = new FormData();
+  fd.append('image', file);
+  // anonymous upload endpoint
+  const res = await fetch('https://api.imgur.com/3/image', {
+    method:'POST',
+    body: fd,
+    headers: {
+      Authorization: 'Client-ID ' + IMGUR_CLIENT_ID
+    }
+  });
+  const json = await res.json();
+  if(!json || !json.data || !json.data.link) throw new Error('Imgur upload failed');
+  return json.data.link;
+}
+
+async function sendFile(file: File){
+  if(!file) return;
+  if(file.size > MAX_SIZE_BYTES) { alert('File too large — max 100 MB'); return; }
+  const name = nameInput.value.trim() || 'anon';
+  const useImgur = tryImgurEl.checked && !!IMGUR_CLIENT_ID;
+  try{
+    let urlOrData: string;
+    if(useImgur){
+      // upload to Imgur and get a public link
+      // NOTE: Imgur rejects some video formats; fallback to base64 on failure
+      urlOrData = await uploadToImgur(file);
+    } else {
+      // embed as data URL (may be huge)
+      urlOrData = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+    const msg: ChatMessage = {
+      id: Gun.text.random(),
+      name,
+      text: urlOrData,
+      ts: new Date().toISOString(),
+      media: true,
+      contentType: file.type
+    };
+    messagesNode.set(msg);
+  }catch(e){
+    console.error('file send error', e);
+    // try fallback to base64 if Imgur failed
+    if(tryImgurEl.checked && IMGUR_CLIENT_ID){
+      if(confirm('Imgur upload failed — fallback to embedding data directly? (may be large)')){
+        try{
+          const r = new FileReader();
+          r.onload = () => {
+            const dataUrl = r.result as string;
+            const msg: ChatMessage = {
+              id: Gun.text.random(),
+              name: nameInput.value || 'anon',
+              text: dataUrl,
+              ts: new Date().toISOString(),
+              media: true,
+              contentType: file.type
+            };
+            messagesNode.set(msg);
+          };
+          r.readAsDataURL(file);
+        }catch(err){
+          alert('Fallback failed.');
+        }
+      }
+    } else {
+      alert('Upload failed.');
+    }
+  }
+}
+
+/* UI event wiring */
+sendBtn.addEventListener('click', sendText);
+textInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') sendText(); });
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  if(!file) return;
+  sendFile(file);
+  // reset file input so same file can be reselected later
+  fileInput.value = '';
+});
+
+/* === Ad link placeholders (user can change) === */
+(function initAds(){
+  // default example images (replace URLs with your Imgur links)
+  const leftImg = leftAd.querySelector('img') as HTMLImageElement;
+  const rightImg = rightAd.querySelector('img') as HTMLImageElement;
+  // Replace these example links with your own Imgur links if required
+  if(leftImg && leftImg.src.includes('yourLeftAd.png')) leftImg.src = 'https://i.imgur.com/8JmG7kX.png';
+  if(rightImg && rightImg.src.includes('yourRightAd.png')) rightImg.src = 'https://i.imgur.com/0rV2e0V.png';
+  leftAd.href = leftImg.src;
+  rightAd.href = rightImg.src;
+})();
+
+/* === MANY flying #freeholyC instances === */
+(function spawnFreeHoly(){
+  const container = document.getElementById('freeholyContainer')!;
+  const COUNT = Math.min(Math.max(16, Math.floor(window.innerWidth * window.innerHeight / 80000)), 80); // scale with screen
+  const items: {
+    el: HTMLElement;
+    x:number; y:number; vx:number; vy:number; rot:number; vrot:number; size:number;
+  }[] = [];
+  for(let i=0;i<COUNT;i++){
+    const span = document.createElement('div');
+    span.className = 'freeholy-c';
+    span.textContent = '#freeholyC';
+    const size = 12 + Math.random()*40;
+    span.style.fontSize = size + 'px';
+    span.style.opacity = (0.35 + Math.random()*0.9).toString();
+    container.appendChild(span);
+    const x = Math.random() * (window.innerWidth - 60);
+    const y = Math.random() * (window.innerHeight - 60);
+    const vx = (Math.random()*3 + 0.8) * (Math.random()>0.5?1:-1);
+    const vy = (Math.random()*3 + 0.8) * (Math.random()>0.5?1:-1);
+    const rot = Math.random()*360;
+    const vrot = (Math.random()*2 + 0.2) * (Math.random()>0.5?1:-1);
+    items.push({el:span,x,y,vx,vy,rot,vrot,size});
+  }
+
+  function step(){
+    for(const it of items){
+      it.x += it.vx;
+      it.y += it.vy;
+      it.rot += it.vrot;
+      const w = it.el.offsetWidth;
+      const h = it.el.offsetHeight;
+      if(it.x <= 0 || it.x + w >= window.innerWidth){
+        it.vx *= -1;
+        it.el.style.color = randomColor();
+      }
+      if(it.y <= 0 || it.y + h >= window.innerHeight){
+        it.vy *= -1;
+        it.el.style.color = randomColor();
+      }
+      // update transform
+      it.el.style.left = Math.max(0, Math.min(window.innerWidth - w, it.x)) + 'px';
+      it.el.style.top = Math.max(0, Math.min(window.innerHeight - h, it.y)) + 'px';
+      it.el.style.transform = `rotate(${it.rot}deg)`;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+
+  function randomColor(){
+    const r = Math.floor(120 + Math.random()*135);
+    const g = Math.floor(80 + Math.random()*175);
+    const b = Math.floor(80 + Math.random()*175);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // reposition on resize (simple)
+  window.addEventListener('resize', () => {
+    for(const it of items){
+      it.x = Math.random()*(window.innerWidth-80);
+      it.y = Math.random()*(window.innerHeight-80);
+    }
+  });
+})();
+
+/* === small helpful note for devs === */
+console.log('#freeholyC chat ready — Gun peers:', GUN_PEERS, 'Imgur client-id configured:', !!IMGUR_CLIENT_ID);
 
 </script>
 </body>
