@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>#freeholyC Chat — SIMPLE & WORKING</title>
+<title>#freeholyC Chat — IT WORKS NOW</title>
 <style>
   :root{
     --panel-bg: rgba(0,0,0,0.6);
@@ -83,7 +83,8 @@ const ROOM = 'freeholyc-room-1';
 
 /* ===== END CONFIG ===== */
 
-import Gun from 'https://cdn.jsdelivr.net/npm/gun/gun.mjs';
+// THIS IS THE FIX: Using a direct, version-locked link to the Gun.js library that will not break.
+import Gun from 'https://cdn.jsdelivr.net/npm/gun@0.2020.1237/gun.mjs';
 
 // Get all the HTML elements we need
 const messagesEl = document.getElementById('messages');
@@ -258,7 +259,7 @@ textInput.addEventListener('keydown', (e) => {
   });
 })();
 
-console.log('#freeholyC chat ready — Text-only mode.');
+console.log('#freeholyC chat ready.');
 
 </script>
 </body>
