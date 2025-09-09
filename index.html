@@ -70,7 +70,7 @@
 (function spawnFreeHoly() {
   const container = document.getElementById('freeholyContainer');
   if (!container) return;
-  const COUNT = Math.min(Math.max(50, Math.floor(window.innerWidth * window.innerHeight / 80000)), 1000);
+  const COUNT = Math.min(Math.max(10, Math.floor(window.innerWidth * window.innerHeight / 80000)), 100);
   const items = [];
 
   for (let i = 0; i < COUNT; i++) {
